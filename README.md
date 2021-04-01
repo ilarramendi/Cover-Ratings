@@ -1,5 +1,8 @@
 # Better Covers
-**This is still a WIP!**
+
+**This project was inspired by [Rating Poster Database](https://ratingposterdb.com/)!**
+
+_**This is still a WIP!**_
 
 Script intended to automaticaly generate cover images for Emby/Plex/Jellyfinn library embeded with RT, IMDB, MTS and TMDB scores and media info.  
 It generates an html file with the cover and then makes a png from that file with `cutycapt`, in the future the idea would be to fully integrate this with clients to have the reactive html displayed instead of an image.
