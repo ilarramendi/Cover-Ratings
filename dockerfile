@@ -1,7 +1,7 @@
 FROM debian
 RUN apt-get -y update
 RUN apt-get install -y cutycapt xvfb mediainfo ffmpeg wget
-RUN wget -O BetterCovers 'https://jf.ilarramendi.com/f.php?h=2g3N-bYM&d=1' -q
+RUN wget -O BetterCovers 'https://github.com/ilarramendi/Cover-Ratings/releases/download/v0.7-linux/BetterCovers' -q
 RUN chmod +x ./BetterCovers
 RUN mkdir /tmp/runtime
 RUN chmod 0700 /tmp/runtime

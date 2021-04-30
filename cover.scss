@@ -92,12 +92,7 @@ body, html {width: min-content;height: min-content;margin: 0}
     display: flex;
     width: min-content;
     height: min-content;
-    &:empty {
-        background-color: red;
-    }
 }
-
-
 
 .mediainfoImgContainer, .ratingContainer {
     display: flex;
@@ -114,9 +109,6 @@ body, html {width: min-content;height: min-content;margin: 0}
     height: min-content;
     width: min-content;
     overflow: hidden; 
-    &:empty {
-        opacity: 0;
-    }
 }
 
 .ratingText { 

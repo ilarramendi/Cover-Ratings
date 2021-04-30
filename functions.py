@@ -17,12 +17,16 @@ extensions = ['mkv', 'mp4', 'avi']
 minVotes = 5
 logLevel = 5
 
+def setLogLevel(level):
+    global logLevel
+    logLevel = level
+
 def log(text, type = 0, level = 2): # 0 = Normal, 1 = Error, 2 = Success, 3 = Warning
     if level <= logLevel:
         msg = '\033[9' + str(type) + 'm' if type != 0 else ''
         msg += text
         msg += '\033[0m' if type != 0 else ''
-        print(msg)
+        print((datetime.now().strftime("[%m/%d/%Y %H:%M:%S] --> ") if logLevel >= 3 else '') + msg)
         with open('./BetterCovers.log', 'a') as log:
             log.write(datetime.now().strftime("[%m/%d/%Y %H:%M:%S] --> ") + msg + '\n')
 
@@ -155,7 +159,7 @@ def getMediaInfo(file): # {"metadata": [str], "language": [str]}?
         if video:
             info = []
             info.append('HDR' if 'bt2020' in out2[1] else 'SDR')
-            info.append('UHD' if video['height'] >= 2160 else 'HD' if video['height'] >= 1080 else 'SD')
+            info.append('UHD' if video['width'] >= 3840 else 'HD' if video['width'] >= 1920 else 'SD')
 
             if 'codec_name' in video:
                 if video['codec_name'] == 'h264': 
@@ -179,20 +183,10 @@ def getMediaInfo(file): # {"metadata": [str], "language": [str]}?
             log('No video tracks found for: ' + file, 1, 1)
             return False
     else: 
-        log('Error getting media info, exit code: ' + str(out[0]) +
-            '\nOutput:\n' + out[1] + 
-            '\nExit Code: ' + str(out2[0]) +
-            '\nOutput:\n' + out2[1], 1, 1)
+        log('Error getting media info, exit code: ' + str(out[0]) + ' ' + str(out2[0]), 1, 1)
+        log('Mediainfo output:\n' + out[1] +
+            '\nOutput 2:\n' + out2[1], 3, 3)
         return False
-
-def getMediaName(folder): # [str?, str?] => [name, year]
-    inf = findall("\/([^\/]+)[ \.]\(?(\d{4})\)?", folder)
-    if len(inf) == 0: inf = findall("\/([^\/]+)$", folder)
-    else: return [inf[0][0].translate({'.': ' ', '_': ' '}), inf[0][1]]
-    if len(inf) == 0:
-        log('Cant parse name from: ' + folder, 3, 1)
-        return [False, False]
-    return inf + [False]
 
 def downloadImage(url, retry, src): # Boolean
     i = 0
@@ -266,9 +260,9 @@ def getSeasonsMetadata(imdbid, tmdbid, seasons, omdbApi, tmdbApi, episodeMediain
             res = []
             codec = []
             hdr = []
-            for ex in extensions: mediaFiles += glob(join(path, '*.' + ex))
+            for ex in extensions: mediaFiles += glob(join(path, '*.' + ex)) # TODO call getEpisodes instead of this
             for fl in mediaFiles:
-                ep = findall('[Ss]\d{1,3}[Ee](\d{1,4})', fl)
+                ep = findall('[Ss]\d{1,3}[Ee](\d{1,4})', fl) 
                 if len(ep) > 0 and int(ep[0]) in season['episodes']:
                     ep = int(ep[0])
                     minfo = getMediaInfo(fl)   
@@ -312,9 +306,13 @@ def tagImage(path):
 
 def generateImage(config, ratings, certification, language, mediainfo, url, thread, coverHTML, path, mediaFile):
     st = time.time()
-    img = downloadImage(url, 4, join(resource_path('threads/' + thread), 'cover.png')) if not mediaFile else generateMediaImage(mediaFile, thread)
-
-    if not img: return False
+    imageGenerated = mediaFile and generateMediaImage(mediaFile, thread)
+    if mediaFile and not imageGenerated:
+        if url:
+            log('Error generating screenshot with ffmpeg, using downloaded image instead', 3, 3)
+        else:
+            log('Error generating screenshot with ffmpeg', 1, 1)
+            return False
     HTML = coverHTML
     dictionary = {
         'top': '$horizontal $start',
@@ -328,6 +326,7 @@ def generateImage(config, ratings, certification, language, mediainfo, url, thre
     align += dictionary[config['mediainfo']['position']].replace('$', 'm')
     align += ' ma' + config['mediainfo']['alignment']
     HTML = HTML.replace('containerClass', align)
+    HTML = HTML.replace('$IMGSRC', './cover.png' if imageGenerated else url)
 
     HTML +='<link rel="stylesheet" href="' + resource_path('cover.css') + '">'
     HTML += '\n<style>\n' + generateCSS(config) + '.container {width:' + str(config['width']) + 'px; height:' + str(config['height']) + 'px}\n</style>'
@@ -351,16 +350,16 @@ def generateImage(config, ratings, certification, language, mediainfo, url, thre
     st = time.time()
     
     i = 0
-    command = 'cutycapt --url="file://' + resource_path(join('threads', thread, 'tmp.html')) + '" --delay=1000 --min-width=100 --min-height=100 --out="' + resource_path(join('threads', thread)) + '/tmp.jpg"'
-    while i < 3 and not call(command, shell=True) == 0: i += 1
+    command = 'cutycapt --url="file://' + resource_path(join('threads', thread, 'tmp.html')) + '" --delay=1500 --min-width=100 --min-height=100 --out="' + resource_path(join('threads', thread)) + '/tmp.jpg"'
+    while i < 3 and not call(command, shell=True, stdout=DEVNULL, stderr=DEVNULL) == 0: i += 1
     if i < 3:
         tagImage(resource_path(join('threads', thread, 'tmp.jpg')))
         if not call(['mv', '-f', resource_path(join('threads', thread, 'tmp.jpg')), path]) == 0:
-            log('Error moving to: ' + path, 1, 1)
+            log('Error moving to: ' + path, 3, 3)
             return False
         return True
     else: 
-        log('Error generating image with cutycapt', 1, 1)
+        log('Error generating image with cutycapt', 3, 3)
         return False
 
 def generateMediaImage(path, thread):

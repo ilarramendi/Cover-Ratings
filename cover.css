@@ -193,10 +193,6 @@ body, html {
   height: min-content;
 }
 
-.mediainfoContainer:empty {
-  background-color: red;
-}
-
 .mediainfoImgContainer, .ratingContainer {
   display: -webkit-box;
   display: -ms-flexbox;
@@ -228,10 +224,6 @@ body, html {
   width: -moz-min-content;
   width: min-content;
   overflow: hidden;
-}
-
-.ratingsContainer:empty {
-  opacity: 0;
 }
 
 .ratingText {
