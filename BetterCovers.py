@@ -4,7 +4,7 @@ from os import access, W_OK
 from os.path import exists, join, abspath
 import json
 from sys import argv, exit
-from datetime import timedelta
+from datetime import timedelta, datetime
 import time
 from threading import Thread
 import functions
@@ -18,6 +18,8 @@ tasks = []
 running = True
 processing = True
 tasksLength = 0
+dbVersion = 1
+db = {'version': dbVersion}
 
 # region Functions
 def generateTasks(metadata, overWrite):
@@ -73,12 +75,6 @@ def generateTasks(metadata, overWrite):
 
     return tsks
 
-def getMediaFiles(folder):
-    mediaFiles = []
-    for ex in functions.extensions: 
-        mediaFiles += glob(join(folder.translate({91: '[[]', 93: '[]]'}), '*.' + ex))
-    return[fl for fl in mediaFiles if 'trailer' not in fl]
-
 def getName(folder):
     inf = findall("\/([^\/]+)[ \.]\(?(\d{4})\)?", folder)
     if len(inf) == 0: 
@@ -91,41 +87,45 @@ def getName(folder):
 
 def processFolder(folder):
     st = time.time()
-    mediaFiles = getMediaFiles(folder)
-    metadata = {'ids': {}, 'path': folder}
-    metadata['title'], metadata['year'] = getName(folder)
-    metadata['seasons'] = functions.getSeasons(folder, config['season']['output'], config['backdrop']['output'], metadata['title'])
-    metadata['type'] ='tv' if len(metadata['seasons']) > 0 else 'movie'
+    if folder in db:
+        functions.updateMetadata(db[folder], config['metadataUpdateInterval'], config['omdbApi'], config['tmdbApi'], config['scraping'])
+        metadata = deepcopy(db[folder])
+    else:
+        metadata = {'ids': {}, 'path': folder}
+        mediaFiles = functions.getMediaFiles(folder)
+        metadata['title'], metadata['year'] = getName(folder)
+        metadata['seasons'] = functions.getSeasons(folder, config['season']['output'], config['backdrop']['output'], metadata['title'])
+        metadata['type'] ='tv' if len(metadata['seasons']) > 0 else 'movie'
 
-    if not overWrite and metadata['type'] == 'movie' and exists(folder + '/' + config['movie']['output']) and exists(folder + '/' + config['backdrop']['output']):
-        return log('Existing cover image found for: ' + metadata['title'], 3, 3)
-    
-    if metadata['type'] == 'tv': # Get IDS from NFO
-        nfo = join(folder, 'tvshow.nfo')
-        if exists(nfo): metadata['ids'] = functions.readNFO(nfo)
-    elif len(mediaFiles) == 1:
-        nfo = mediaFiles[0].rpartition('.')[0] + '.nfo'
-        if exists(nfo): metadata['ids'] = functions.readNFO(nfo)
+        if metadata['type'] == 'tv': # Get IDS from NFO
+            nfo = join(folder, 'tvshow.nfo')
+            if exists(nfo): metadata['ids'] = functions.readNFO(nfo)
+        elif len(mediaFiles) == 1:
+            nfo = mediaFiles[0].rpartition('.')[0] + '.nfo'
+            if exists(nfo): metadata['ids'] = functions.readNFO(nfo)
 
-    if len(metadata['ids']) == 0 and not metadata['title']: return log('No id or name can be found for: ' + folder, 1, 1)
-
-    if metadata['type'] == 'movie': # Get mediainfo
-        if len(mediaFiles) == 1:
-            if functions.getConfigEnabled(config['movie']['mediainfo']['config']):
-                metadata['mediainfo'] = functions.getMediaInfo(mediaFiles[0], config['defaultAudio'])
+        if metadata['type'] == 'movie': # Get mediainfo
+            if len(mediaFiles) == 1:
+                if functions.getConfigEnabled(config['movie']['mediainfo']['config']):
+                    metadata['mediainfoDate'] = datetime.now().strftime("%d/%m/%Y")
+                    metadata['mediainfo'] = functions.getMediaInfo(mediaFiles[0], config['defaultAudio'])
         else: log('Error finding media file on: ' + folder, 3, 3)
 
-    metadata = functions.getMetadata(metadata, config['omdbApi'], config['tmdbApi'], config['scraping'])
+        functions.getMetadata(metadata, config['omdbApi'], config['tmdbApi'], config['scraping'])
+        if len(metadata['ids']) == 0 and not metadata['title']: return log('No id or name can be found for: ' + folder, 1, 1)  
 
-    if metadata['type'] == 'tv':
-        metadata = functions.getSeasonsMetadata(metadata,
-            config['omdbApi'],
-            config['tmdbApi'],
-            #functions.getConfigEnabled(config['tv']['mediainfo']['config']) or functions.getConfigEnabled(config['season']['mediainfo']['config']),
-            not exists(folder + '/' + config['tv']['output']) or not exists(folder + '/' + config['backdrop']['output']),
-            overWrite,
-            config['defaultAudio'])
-    
+        if metadata['type'] == 'tv':
+            metadata = functions.getSeasonsMetadata(metadata,
+                config['omdbApi'],
+                config['tmdbApi'],
+                #functions.getConfigEnabled(config['tv']['mediainfo']['config']) or functions.getConfigEnabled(config['season']['mediainfo']['config']),
+                not exists(folder + '/' + config['tv']['output']) or not exists(folder + '/' + config['backdrop']['output']),
+                overWrite,
+                config['defaultAudio'])
+        db[folder] = deepcopy(metadata)
+
+    #if not overWrite and metadata['type'] == 'movie' and exists(folder + '/' + config['movie']['output']) and exists(folder + '/' + config['backdrop']['output']):
+    #    return log('Existing cover image found for: ' + metadata['title'], 3, 3) 
     global tasks, tasksLength
     generatedTasks = generateTasks(metadata, overWrite)
     tasks += generatedTasks
@@ -235,6 +235,13 @@ try: # Move files from executable to workdir
 except:
     pass
 
+if exists(join(workDirectory, 'db.json')):
+    with open(join(workDirectory, 'db.json')) as js:
+        db = json.load(js)
+        if db['version'] != dbVersion:
+            log('Removing db file because this is a new version of the script', 3, 3)
+            db = {'version': dbVersion}
+
 if not exists(join(workDirectory, 'config.json')):
     log('Missing config file', 1, 0)
     exit()
@@ -279,6 +286,8 @@ try:
 
     PROCESSING.join()
     processing = False
+    with open(join(workDirectory, 'db.json'), 'w') as js:
+        js.write(json.dumps(db, indent=7))
     log('Finished generating tasks', 0, 2)
     GENERATING.join()
 except KeyboardInterrupt:
@@ -301,4 +310,3 @@ if running:
 # endregion
 
 log('DONE! Finished generating ' + str(tasksLength) + ' images in: ' + str(timedelta(seconds=round(time.time() - gstart))), 0, 0)
-

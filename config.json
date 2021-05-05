@@ -13,6 +13,7 @@
      },
      "defaultAudio": "ENG",
      "englishUSA": true,
+     "metadataUpdateInterval": 14,
      "episode": {
           "mediainfo": {
                "position": "top",

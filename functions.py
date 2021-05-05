@@ -42,10 +42,6 @@ def getLanguage(conf, languages, englishUSA):
         if lg in languages: return 'USA' if lg == 'ENG' and englishUSA else lg
     return False
 
-def setLogLevel(level):
-    global logLevel
-    logLevel = level
-
 def log(text, type = 0, level = 2): # 0 = Normal, 1 = Error, 2 = Success, 3 = Warning
     if level <= logLevel:
         msg = '\033[9' + str(type) + 'm' if type != 0 else ''
@@ -115,8 +111,27 @@ def getJSON(url): # JSON?
     
     res = response.json()
 
-def getMetadata(metadata, omdbApi, tmdbApi, scraping):
-    mt = metadata
+def getMediaFiles(folder):
+    mediaFiles = []
+    for ex in extensions: 
+        mediaFiles += glob(join(folder.translate({91: '[[]', 93: '[]]'}), '*.' + ex))
+    return[fl for fl in mediaFiles if 'trailer' not in fl]
+
+def updateMetadata(metadata, interval, omdbApi, tmdbApi, scrapin):
+    if metadata['type'] == 'movie':
+        if (datetime.now() - datetime.strptime(metadata['mediainfoDate'], '%d/%m/%Y')) > timedelta(days=interval):
+            mediaFiles = getMediaFiles(metadata['path'])
+            if len(mediaFiles) == 1:
+                metadata['mediainfo'] = getMediaInfo(mediaFiles[0])
+                metadata['mediainfoDate'] = datetime.now().strftime("%d/%m/%Y")
+        if (datetime.now() - datetime.strptime(metadata['metadataDate'], '%d/%m/%Y')) >= timedelta(days=interval):
+            getMetadata(metadata, omdbApi, tmdbApi, scrapin)
+    else:
+        print('Episode metadata update TODO')
+
+        
+def getMetadata(mt, omdbApi, tmdbApi, scraping):
+    mt['metadataDate'] = datetime.now().strftime("%d/%m/%Y")
     mt['ratings'] = {}
     mt['ageRating'] = 'NR'
     mt['certifications'] = []
@@ -132,8 +147,7 @@ def getMetadata(metadata, omdbApi, tmdbApi, scraping):
                 res = getJSON('https://api.themoviedb.org/3/search/' + mt['type'] + '?api_key=' + tmdbApi + '&language=en&page=1&include_adult=false&append_to_response=releases,external_ids&query=' + quote(mt['title']) + ('&year=' + mt['year'] if mt['year'] else ''))
                 if res and 'results' in res and len(res['results']) > 0: 
                     mt['ids']['TMDBID'] = str(res['results'][0]['id'])
-            
-        if 'TMDBID' in mt['ids']:
+        if 'TMDBID' in mt['ids']: # this is ok
             res = getJSON('https://api.themoviedb.org/3/' + mt['type'] + '/' + mt['ids']['TMDBID'] + '?api_key=' + tmdbApi + '&language=en&append_to_response=releases,external_ids')
             if res: result = res
 
@@ -153,14 +167,14 @@ def getMetadata(metadata, omdbApi, tmdbApi, scraping):
                         if rl['certification'] != '': mt['ageRating'] = rl['certification']
                         break
             
-            if 'title' in res: metadata['title'] = res['title']
-            elif 'name' in res: metadata['title'] = res['name'] 
+            if 'title' in res: mt['title'] = res['title']
+            elif 'name' in res: mt['title'] = res['name'] 
         
         else: log('No results found on TMDB for: ', 3, 1)
           
     if len(omdbApi) > 0 and ('IMDBID' in mt['ids'] or 'title' in mt):
         url = 'http://www.omdbapi.com/?apikey=' + omdbApi + '&tomatoes=true'
-        url += '&i=' + mt['ids']['IMDBID'] if 'IMDBID' in mt['ids'] else '&t=' + quote(mt['title'].replace(' ', '+')) + ('&y=' + year if year else '')
+        url += '&i=' + mt['ids']['IMDBID'] if 'IMDBID' in mt['ids'] else '&t=' + quote(mt['title'].replace(' ', '+')) + ('&y=' + mt['year'] if mt['year'] else '')
         res = getJSON(url)
         if res:
             if 'cover' not in mt and 'Poster' in res and res['Poster'] != 'N/A':
@@ -179,11 +193,10 @@ def getMetadata(metadata, omdbApi, tmdbApi, scraping):
     
     if scraping['textlessPosters'] and 'TMDBID' in mt['ids']:
         posters = getTextlessPosters('https://www.moviemania.io/phone/movie/' + mt['ids']['TMDBID']) 
-        if posters and len(posters) > 0: metadata['cover'] = posters[0]
+        if posters and len(posters) > 0: mt['cover'] = posters[0]
         else: log('No textless poster found for: ' + name, 3, 3)
     
     RTURL = scraping['RT'] and searchRT(mt['type'], mt['title'], mt['year'])
-
     if RTURL:
         RT = getRTMovieRatings(RTURL) if mt['type'] == 'movie' else getRTTvRatings(RTURL)
         if RT:
@@ -193,15 +206,14 @@ def getMetadata(metadata, omdbApi, tmdbApi, scraping):
             if mt['type'] == 'tv':
                 for sn in RT['seasons']: 
                     if int(sn) in mt['seasons']: mt['seasons'][int(sn)]['RTURL'] = RT['seasons'][sn]
-    IMDB = scraping['IMDB'] and 'imdbid' in metadata and getRatingIMDB(metadata['imdbid'])
+    
+    IMDB = scraping['IMDB'] and 'imdbid' in mt and getRatingIMDB(mt['imdbid'])
     if IMDB:
         if 'IMDB' in IMDB:
             mt['ratings']['IMDB'] = {'icon': 'IMDB', 'value': IMDB['IMDB']}
         if 'MTC' in IMDB: 
             mt['ratings']['IMDB'] = {'icon': 'MTC-MS' if IMDB['MTC-MS'] else 'MTC', 'value': IMDB['MTC']}        
         if IMDB['MTC-MS']: certifications.append('MTC-MS')
-
-    return mt
 
 def getMediaInfo(file, defaultLanguage):
     out = getstatusoutput('ffprobe "' + file + '" -of json -show_entries stream=index,codec_type,codec_name,height,width:stream_tags=language -v quiet')
@@ -212,7 +224,7 @@ def getMediaInfo(file, defaultLanguage):
     video = False
 
     if out[0] != 0: 
-        log('Error getting media info, exit code: ' + str(out[0]) + '\m' + str(out[1]), 1, 1)
+        log('Error getting media info, exit code: ' + str(out[0]) + '\n' + str(out[1]), 1, 1)
         return info
     
     out = json.loads(out[1])['streams']
