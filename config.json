@@ -140,7 +140,7 @@
                     "NR": false
                }
           },
-          "output": "folder.jpg",
+          "output": "folder.png",
           "width": 2000,
           "height": 3000
      },
@@ -205,7 +205,7 @@
                     "NR": false
                }
           },
-          "output": "thumb.jpg",
+          "output": "thumb.png",
           "width": 1920,
           "height": 1080,
           "generateImages": false
@@ -271,7 +271,7 @@
                     "NR": false
                }
           },
-          "output": "folder.jpg",
+          "output": "folder.png",
           "width": 2000,
           "height": 3000
      },
@@ -336,8 +336,16 @@
                     "NR": false
                }
           },
-          "output": "folder.jpg",
+          "output": "folder.png",
           "width": 2000,
           "height": 3000
-     }
+     },
+     "overlays": [
+          {
+               "type": "tv,movie",
+               "name": "kids",
+               "path": "/kids/"
+          }
+     ],
+     "version": 1
 }

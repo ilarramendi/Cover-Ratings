@@ -126,7 +126,7 @@ def updateMetadata(metadata, interval, omdbApi, tmdbApi, scrapin):
                 metadata['mediainfoDate'] = datetime.now().strftime("%d/%m/%Y")
         if (datetime.now() - datetime.strptime(metadata['metadataDate'], '%d/%m/%Y')) >= timedelta(days=interval):
             getMetadata(metadata, omdbApi, tmdbApi, scrapin)
-    else: print('Episode metadata update TODO') # TODO metadata update
+    else: log('Episode metadata update TODO', 0, 3) # TODO metadata update
    
 def getMetadata(mt, omdbApi, tmdbApi, scraping):
     mt['metadataDate'] = datetime.now().strftime("%d/%m/%Y")
@@ -371,8 +371,8 @@ def getSeasons(folder, coverName, backdropName, title):
             for ex in extensions: eps += glob(join(fl, '*.' + ex))
             for ep in eps: 
                 mc = findall('S0*' + res[0] + 'E0*(\d+)', ep)
-                if len(mc) == 1: episodes[int(mc[0])] = {'path': ep, 'hasCover': exists(ep.rpartition('.')[0] + '.jpg'), 'type': 'episode', 'title': title + ' Season:' + res[0] + ' Episode:' + mc[0]}
-            seasons[int(res[0])] = {'path': fl, 'episodes': episodes, 'hasCover': exists(join(fl, coverName)), 'hasBackdrop': exists(join(fl, backdropName)), 'type': 'season', 'title': title + ' Season:' + res[0]}
+                if len(mc) == 1: episodes[int(mc[0])] = {'path': ep, 'hasCover': exists(ep.rpartition('.')[0] + '.jpg'), 'type': 'episode', 'title': title + ' Season: ' + res[0] + ' Episode: ' + mc[0]}
+            seasons[int(res[0])] = {'path': fl, 'episodes': episodes, 'hasCover': exists(join(fl, coverName)), 'hasBackdrop': exists(join(fl, backdropName)), 'type': 'season', 'title': title + ' Season: ' + res[0]}
 
     return seasons
   
@@ -423,79 +423,30 @@ def generateIMage2(task, config, thread):
         with open(join('..', 'media', 'certifications', task['ageRating'] + '.svg'), 'r') as svg:
             HTML = HTML.replace('<!--CERTIFICATION-->', svg.read())
     
+    if task['overlay'] != '':
+        with open(join(workDirectory, 'media', 'overlays', task['overlay'] + '.html')) as overlay:
+            HTML = overlay.read().replace('<!--CONTAINER-->', HTML)
+    
     HTML = HTML.replace('<!--RATINGS-->', rts)
     HTML = HTML.replace('<!--MEDIAINFO-->', minfo)
+
     with open(join(workDirectory, 'threads', thread + '.html'), 'w') as out:
         out.write(HTML)
 
     i = 0
-    command = 'cutycapt --url="file://' + join(workDirectory, 'threads', thread + '.html') + '" --delay=500 --min-width=500 --min-height=500 --out="' + join(workDirectory, 'threads', thread + '.jpg') + '"'
-    while i < 3 and not call(command, shell=True, stdout=DEVNULL, stderr=DEVNULL) == 0: i += 1
+    # --no-background
+    #command = 'cutycapt --url="file://' + join(workDirectory, 'threads', thread + '.html') + '" --delay=2000 --min-width=500 --min-height=500 --out="' + join(workDirectory, 'threads', thread + '.jpg') + '"'
+    command = ['wkhtmltoimage', '--javascript-delay', '2000', '--transparent', 'file://' + join(workDirectory, 'threads', thread + '.html'), join(workDirectory, 'threads', thread + '.jpg')]
+    while i < 3 and not call(command, stdout=DEVNULL, stderr=DEVNULL) == 0: i += 1
     if i < 3:
         tagImage(join(workDirectory, 'threads', thread + '.jpg'))
         if call(['mv', '-f', join(workDirectory, 'threads', thread + '.jpg'), task['out']]) == 0:
             log('Succesfully generated ' + ('cover' if task['type'] != 'backdrop' else 'backdrop') + ' image for: ' + task['title'] + ' in ' + str(round(time.time() - st)) + 's', 2, 2)
             return True
         log('Error moving to: ' + task['out'], 3, 3)
-    else: log('Error generating image with cutycapt', 3, 3)
+    else: log('Error generating image with wkhtmltoimage', 3, 3)
     log('Error generating image for: ' + task['title'], 1, 1)
     return False
-
-def generateImage(config, ratings, certification, language, mediainfo, url, thread, coverHTML, path, mediaFile):
-    st = time.time()
-    imageGenerated = mediaFile and generateMediaImage(mediaFile, join(workDirectory, 'threads', thread + '-sc.png'))
-    if mediaFile and not imageGenerated:
-        if url:
-            log('Error generating screenshot with ffmpeg, using downloaded image instead', 3, 3)
-        else:
-            log('Error generating screenshot with ffmpeg', 1, 1)
-            return False
-    HTML = coverHTML
-    dictionary = {
-        'top': '$horizontal $start',
-        'bottom': '$horizontal $end',
-        'left': '$vertical $start',
-        'right': '$vertical $end'
-    }
-
-    align = dictionary[config['ratings']['position']].replace('$', 'r')
-    align += ' ra' + config['ratings']['alignment'] + ' '
-    align += dictionary[config['mediainfo']['position']].replace('$', 'm')
-    align += ' ma' + config['mediainfo']['alignment']
-    HTML = HTML.replace('containerClass', align)
-    HTML = HTML.replace('$IMGSRC', thread + '-sc.png' if imageGenerated else url)
-
-    HTML += '\n<style>\n' + generateCSS(config) + '.container {width:' + str(config['width']) + 'px; height:' + str(config['height']) + 'px}\n</style>'
-    
-    rts = ''
-    minfo = ''
-
-    if ratings:
-        for rt in ratings: rts += "<div class = 'ratingContainer'><img src='" + join('..', 'media', 'ratings', rt + '.png') + "' class='ratingIcon'><label class='ratingText'>" + str(ratings[rt]) + "</label></div>\n"
-    if mediainfo:
-        for mi in mediainfo: minfo += "<div class='mediainfoImgContainer'><img src='" + join('..', 'media', 'mediainfo', mi + '.png') + "' class='mediainfoIcon'></div>\n"  
-    if language:
-        minfo += "<div class='mediainfoImgContainer'><img src='" + join('..', 'media', 'languages', language + '.png') + "' class='mediainfoIcon'></div>\n"
-    if certification:
-        with open(join('..', 'media', 'certifications', certification + '.svg'), 'r') as svg:
-            HTML = HTML.replace('<!--CERTIFICATION-->', svg.read())
-    HTML = HTML.replace('<!--RATINGS-->', rts)
-    HTML = HTML.replace('<!--MEDIAINFO-->', minfo)
-    with open(join(workDirectory, 'threads', thread + '.html'), 'w') as out:
-        out.write(HTML)
-
-    i = 0
-    command = 'cutycapt --url="file://' + join(workDirectory, 'threads', thread + '.html') + '" --delay=1000 --min-width=' + str(config['width']) + ' --min-height=' + str(config['height']) + ' --out="' + join(workDirectory, 'threads', thread + '.jpg') + '"'
-    while i < 3 and not call(command, shell=True, stdout=DEVNULL, stderr=DEVNULL) == 0: i += 1
-    if i < 3:
-        tagImage(join(workDirectory, 'threads', thread + '.jpg'))
-        if not call(['mv', '-f', join(workDirectory, 'threads', thread + '.jpg'), path]) == 0:
-            log('Error moving to: ' + path, 3, 3)
-            return False
-        return True
-    else: 
-        log('Error generating image with cutycapt', 3, 3)
-        return False
 
 def generateMediaImage(path, thread):
     cm = call(['ffmpeg', '-y', '-ss', '5:00', '-i', path, '-vframes', '1', '-q:v', '2', join(workDirectory, 'threads', thread + '-sc.png')], stdout = DEVNULL, stderr = DEVNULL)

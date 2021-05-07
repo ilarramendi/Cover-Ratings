@@ -33,9 +33,13 @@ def generateTasks(metadata, overWrite):
         'generateImage': path if metadata['type'] in ['episode', 'backdrop'] and config[metadata['type']]['generateImages'] else False,
         'mediainfo': deepcopy(metadata['mediainfo']),
         'ratings': {},
-        'ageRating': ''}
+        'ageRating': '',
+        'overlay': ''}
     tsk['mediainfo']['languages'] = ''
     
+    for ol in config['overlays']:
+        if (metadata['type'] in ol['type'].split(',') or ol['type'] == '*') and (ol['path'] in metadata['path'] or ol['path'] == '*'):
+            tsk['overlay'] = ol['name']
     if tsk['mediainfo']['color'] == 'HDR' and tsk['mediainfo']['resolution'] == 'UHD' and conf['mediainfo']['config']['color']['UHD-HDR']:
         tsk['mediainfo']['color'] = 'UHD-HDR'
         tsk['mediainfo']['resolution'] = ''
@@ -49,7 +53,7 @@ def generateTasks(metadata, overWrite):
                 if lg in metadata['mediainfo']['languages']:
                     tsk['mediainfo'][pr] = lg
                     break
-    if tsk['mediainfo']['languages'] == '': print(json.dumps(tsk, indent=5))
+
     if 'ratings' in metadata:
         for rt in metadata['ratings']:
             if conf['ratings']['config'][rt]: tsk['ratings'][rt] = metadata['ratings'][rt] 
@@ -161,6 +165,9 @@ def loadConfig(cfg):
         with open(cfg, 'r') as js:
             global config 
             config = json.load(js)
+            if 'version' not in config or config['version'] != 1:
+                log('Wrong version of config file, please update!', 1, 0)
+                exit()
             if '-omdb' in argv and argv[argv.index('-omdb') + 1] != '': config['omdbApi'] = argv[argv.index('-omdb') + 1]
             if '-tmdb' in argv and argv[argv.index('-tmdb') + 1] != '': config['tmdbApi'] = argv[argv.index('-tmdb') + 1]
         with open(cfg, 'w') as out: 
@@ -264,7 +271,7 @@ if not exists(join(workDirectory, 'cover.css')):
 # region Check Dependencies
 dependencies = [
     'mediainfo' if functions.getConfigEnabled(config['tv']['mediainfo']['config']) or functions.getConfigEnabled(config['season']['mediainfo']['config']) or functions.getConfigEnabled(config['episode']['mediainfo']['config']) or functions.getConfigEnabled(config['movie']['mediainfo']['config']) else False,
-    'cutycapt',
+    'wkhtmltopdf',
     'ffmpeg' if config['episode']['generateImages'] else False]
 
 for dp in [d for d in dependencies if d]:
